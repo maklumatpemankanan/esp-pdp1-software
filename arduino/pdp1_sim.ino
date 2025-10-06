@@ -1661,7 +1661,7 @@ void executeOperate(uint32_t instruction) {
         case 9:   return '9';
         case 16:  return '0';     // 20 oktal
         case 17:  return '/';     // 21 oktal
-        case 27:  return '=';
+        case 27:  return ',';
         case 30:  return ',';
         case 32:  return '_';
         case 44:  return '+';
