@@ -1,8 +1,6 @@
 # esp-pdp1<br>
 PDP-1 Simulator on ESP32<br>
-<h2>Hardware Components<br>
--------------------
-</h2>
+<h2>Hardware Components</h2>
 
 ESP32 Microcontroller (520KB RAM)<br>
 SD Card (SPI) for program storage<br>
@@ -10,7 +8,7 @@ SD Card (SPI) for program storage<br>
 7x PCF8574 I²C Port Expanders for switch inputs<br>
 TCA9548A I²C Multiplexer<br>
 <br><br>
-<h2>Implemented PDP-1 Architecture<br></h2>
+<h2>Implemented PDP-1 Architecture</h2>
 Registers (all 18-bit)<br>
 <br><br>
 AC (Accumulator) - Main arithmetic register<br>
@@ -26,9 +24,7 @@ PF[1-6] (Program Flags) - 6 software flags<br>
 18-bit per word<br>
 1's Complement arithmetic<br>
 <br>
-<h2>
-Implemented Instructions
-</h2>  
+<h2>Implemented Instructions</h2>  
 Memory Reference Instructions (Opcodes 00-56 octal, even)
 <br>
 AND (00) - Logical AND<br>
