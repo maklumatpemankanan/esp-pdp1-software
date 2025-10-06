@@ -204,3 +204,5 @@ Instruction Execution: ~1000 instructions/loop in Normal Mode<br>
 I/O Response: Immediate switch reaction (STOP within 1 instruction)<br>
 LED Update: After each significant operation<br>
 SD-Card Loading: Program load in <1 second<br>
+
+<h2>The Code ist created with Claude AI</h2>
