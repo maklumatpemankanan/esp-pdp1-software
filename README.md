@@ -5,7 +5,7 @@ the emulation is written for my own Hardware-Simulator of the PDP1-Computer and 
 
 The files for the web server are borrowed from the PiDP1, because i didn't want to reinvent the wheel when I built the adapter for the PiDP1.
 A big Part of the code is build with the assistence of Claude AI .
-:heavy_exclamation_mark: dont forget to put yout Wifi-Data in the webserver.h if you want to use this Feature.
+**dont forget to put yout Wifi-Data in the webserver.h if you want to use this Feature.**
 
 ![PDP-1](pictures/pdp1.jpg)
 (picture from [Wikipedia.org]([PDP-1 - Wikipedia](https://en.wikipedia.org/wiki/PDP-1#/media/File:DEC_PDP-1_Demo_Lab_at_Mountain_View's_Computer_History_Museum.jpg)))
