@@ -502,7 +502,7 @@ MIT License
 ## Acknowledgments
 
 - DEC for the original PDP-1 design (1959)
-- [Oscar Vermeulen for the PiDP-1 project inspiration]([PiDP-1](https://obsolescence.dev/pdp1.html))
+- [Oscar Vermeulen for the PiDP-1](https://obsolescence.dev/pdp1.html) project inspiration
 - [Pidp1-googlegroup](https://groups.google.com/g/pidp-1)
 
 ## Documents
