@@ -1,0 +1,19 @@
+hello   
+/ above: title line - was punched in human readable letters on paper tape
+/ below: location specifier - told assembler what address to assemble to
+100/
+lup,    lac i ptr      
+    	cli            
+lu2,    rcl 6s         
+       		      
+    	tyo            
+    	sza            
+    	jmp lu2       
+    	idx ptr        
+    	sas end        
+    	jmp lup        
+    	hlt            
+ptr,    msg            
+msg,    text "hello, world"    
+end,    .             
+start 100             

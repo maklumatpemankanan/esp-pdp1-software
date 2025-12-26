@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDP-1 Simulator</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap');
+        :root {
+            --cream: #e5dac3;
+            --slate: #5b6d7a;
+            --dark-slate: #445561;
+            --grey-slate: #888888;
+            --dark-text: #293238;
+            --light-text: #f2ebd5;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Jost', sans-serif;
+            background-color: var(--slate);
+            color: var(--dark-text);
+            line-height: 1.4;
+            padding: 15px;
+            font-size: 14px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr auto auto;
+            grid-template-areas:
+                "header"
+                "main-content"
+                "tape-content"
+                "misc-content";
+            gap: 8px;
+            max-width: 95%;
+            margin: 0 auto;
+        }
+
+        .header {
+            grid-area: header;
+            background-color: var(--cream);
+            padding: 15px 25px;
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 50px;
+            font-weight: 700;
+            color: var(--slate);
+            letter-spacing: 3px;
+            line-height: 1;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--slate);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            line-height: 1.2;
+        }
+
+        .title-small {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--slate);
+            margin-top: 5px;
+        }
+
+        .main-content {
+            grid-area: main-content;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .misc-content {
+            grid-area: misc-content;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+        }
+
+        .tape-content {
+            grid-area: tape-content;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .panel {
+            background-color: var(--cream);
+            padding: 12px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--slate);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Display */
+        #display-container {
+            margin: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: black;
+        }
+
+        #display {
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Typewriter */
+        #typewriter {
+            height: 400px;
+            overflow-y: auto;
+            background-color: #f5f5f0;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: 2px solid var(--slate);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #typewriter:focus {
+            outline: 2px solid var(--slate);
+            outline-offset: -2px;
+        }
+
+        #typewriter-output {
+            user-select: text;
+        }
+
+        .typewriter .red {
+            color: #cc0000;
+        }
+
+        .typewriter .black {
+            color: #000000;
+        }
+
+        /* Paper Tape */
+        .tape-canvas {
+            width: 100%;
+            height: 120px;
+            background-color: #505050;
+            display: block;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Buttons */
+        .button {
+            display: inline-block;
+            padding: 6px 12px;
+            background: none;
+            border: 2px solid var(--slate);
+            font-family: 'Jost', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--slate);
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .button:hover {
+            background-color: var(--slate);
+            color: var(--cream);
+        }
+
+        .button.primary {
+            background-color: var(--slate);
+            color: var(--cream);
+        }
+
+        .button.primary:hover {
+            background-color: var(--dark-slate);
+        }
+
+        .button:disabled, .button:disabled:hover {
+            background: none;
+            border-color: var(--grey-slate);
+            color: var(--grey-slate);
+            cursor: not-allowed;
+        }
+
+        /* File input */
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 6px 12px;
+            background-color: var(--slate);
+            color: var(--cream);
+            border: 2px solid var(--slate);
+            font-family: 'Jost', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .file-label:hover {
+            background-color: var(--dark-slate);
+        }
+
+        /* Messages */
+        #messages {
+            min-height: 60px;
+            padding: 10px;
+            background-color: #f5f5f0;
+            border: 2px solid var(--slate);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-y: auto;
+        }
+
+        /* Connection status */
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 8px;
+            background-color: #cc0000;
+        }
+
+        .status-indicator.connected {
+            background-color: #00cc00;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content,
+            .tape-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">PDP-1</div>
+            <div>
+                <div class="title">ESP32 Simulator</div>
+                <div class="title-small">WebSocket: <span id="ws-status">Verbinde...</span><span class="status-indicator" id="status-led"></span></div>
+            </div>
+        </div>
+
+        <!-- Main Content: Display & Typewriter -->
+        <div class="main-content">
+            <!-- Display Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    Display
+                    <div class="header-controls">
+                        <button class="button" id="connectBtn">Connect</button>
+                        <button class="button" id="size512Btn">512px</button>
+                        <button class="button" id="size1024Btn">1024px</button>
+                    </div>
+                </div>
+                <div id="display-container">
+                    <canvas id="display" width="512" height="512"></canvas>
+                </div>
+            </div>
+
+            <!-- Typewriter Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    Typewriter
+                    <div class="header-controls">
+                        <button class="button" onclick="clearTypewriter()">Clear</button>
+                    </div>
+                </div>
+                <div id="typewriter" tabindex="0">
+                    <div id="typewriter-output"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paper Tape -->
+        <div class="tape-content">
+            <!-- Paper Tape Reader -->
+            <div class="panel">
+                <div class="panel-header">
+                    Paper Tape Reader
+                    <div class="header-controls">
+                        <label class="file-label" for="tape-file">
+                            Browse
+                        </label>
+                        <input type="file" id="tape-file" class="file-input" accept=".rim,.bin">
+                        <button class="button primary" id="mount-btn" onclick="mountReader()" disabled>Mount</button>
+                        <button class="button" id="unmount-btn" onclick="unmountReader()" disabled>Unmount</button>
+                        <span id="tape-status" style="margin-left:10px; font-size:12px;"></span>
+                    </div>
+                </div>
+                <canvas id="readerCanvas" class="tape-canvas"></canvas>
+            </div>
+
+            <!-- Paper Tape Punch -->
+            <div class="panel">
+                <div class="panel-header">
+                    Paper Tape Punch
+                    <div class="header-controls">
+                        <button class="button primary" onclick="savePunch()">Save</button>
+                        <button class="button" onclick="clearPunch()">Clear</button>
+                    </div>
+                </div>
+                <canvas id="punchCanvas" class="tape-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="misc-content">
+            <div class="panel">
+                <div class="panel-header">Messages</div>
+                <div id="messages"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="p7sim.js"></script>
+    <script src="typewriter.js"></script>
+    <script src="papertape.js"></script>
+
+    <script>
+const print = console.log;
+
+let ws = null;
+let wsReconnectTimer = null;
+let messages = document.getElementById('messages');
+let statusLed = document.getElementById('status-led');
+let wsStatus = document.getElementById('ws-status');
+
+// Display
+const connectBtn = document.getElementById('connectBtn');
+let dpy_connected = false;
+let display = null;
+
+// Paper Tape
+let papertape = null;
+
+// Typewriter
+let typewriter = null;
+
+function setConnectionStatus(connected) {
+    if (connected) {
+        statusLed.classList.add('connected');
+        wsStatus.textContent = 'Verbunden';
+    } else {
+        statusLed.classList.remove('connected');
+        wsStatus.textContent = 'Getrennt';
+    }
+}
+
+function connectWS() {
+    const wsUrl = `ws://${window.location.hostname}/ws`;
+    console.log('Connecting to', wsUrl);
+    
+    try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            setConnectionStatus(true);
+            messages.innerHTML = 'WebSocket verbunden';
+            if (wsReconnectTimer) {
+                clearTimeout(wsReconnectTimer);
+                wsReconnectTimer = null;
+            }
+        };
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            handleMessage(msg);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket closed - reconnecting in 2s');
+            setConnectionStatus(false);
+            messages.innerHTML = 'WebSocket getrennt - versuche Reconnect...';
+            
+            if (dpy_connected) {
+                dpy_connected = false;
+                connectBtn.textContent = "Connect";
+            }
+            
+            wsReconnectTimer = setTimeout(connectWS, 2000);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            setConnectionStatus(false);
+        };
+    } catch (error) {
+        console.error('WebSocket connection failed:', error);
+        setConnectionStatus(false);
+        wsReconnectTimer = setTimeout(connectWS, 2000);
+    }
+}
+
+function handleMessage(msg) {
+    switch (msg.type) {
+    case 'dpy_connected':
+        if(!dpy_connected) {
+            dpy_connected = true;
+            connectBtn.textContent = "Disconnect";
+            messages.innerHTML = 'Display verbunden';
+        }
+        break;
+        
+    case 'dpy_disconnected':
+        if(dpy_connected) {
+            dpy_connected = false;
+            connectBtn.textContent = "Connect";
+            messages.innerHTML = 'Display getrennt';
+        }
+        break;
+
+    case 'points':
+        display.processIncoming(msg.points);
+        break;
+
+    case 'reader_position':
+        papertape.setPos(msg.position || 0);
+        break;
+
+    case 'reader_mounted':
+        let data = Uint8Array.fromBase64(msg.data);
+        papertape.setReader(data);
+        papertape.setPos(msg.position || 0);
+        messages.innerHTML = 'Paper Tape mounted: ' + data.length + ' bytes';
+        break;
+
+    case 'punch_data':
+        papertape.punchData(msg.value);
+        break;
+
+    case 'punch_batch':
+        // Batch verarbeiten - alle Bytes auf einmal
+        msg.data.forEach(byte => {
+            papertape.punchData(byte);
+        });
+        break;
+    
+    case 'reader_unmounted':
+        papertape.setReader(null);
+        messages.innerHTML = 'Paper Tape unmounted';
+        break;
+
+    case 'char':
+        processbyte(msg.value);
+        break;
+
+    case 'message':
+        messages.innerHTML = msg.text || '';
+        break;
+
+    default:
+        print('unhandled message', msg);
+    }
+}
+
+/*
+function mountReaderTape(data) {
+    ws.send(JSON.stringify({
+        type: 'mount_reader',
+        data: Array.from(data)
+    }));
+    papertape.setReader(data);
+    messages.innerHTML = 'Mounting ' + data.length + ' bytes...';
+}*/
+
+function mountReaderTape(data) {
+    // Konvertiere Uint8Array zu Base64 (moderne Methode)
+    let binary = '';
+    for (let i = 0; i < data.length; i++) {
+        binary += String.fromCharCode(data[i]);
+    }
+    let base64 = btoa(binary);
+    
+    ws.send(JSON.stringify({
+        type: 'mount_reader',
+        data: base64
+    }));
+    papertape.setReader(data);
+    messages.innerHTML = 'Mounting ' + data.length + ' bytes (Base64: ' + base64.length + ')...';
+}
+
+let selectedTapeFile = null;  // NEU: Temporär gespeicherte Datei
+
+async function mountReader() {
+    const input = document.getElementById('tape-file');
+    const file = input.files[0];
+    if (!file) {
+        // Wenn kein File ausgewählt aber selectedTapeFile vorhanden
+        if (selectedTapeFile) {
+            mountReaderTape(selectedTapeFile);
+            selectedTapeFile = null;
+        }
+        return;
+    }
+
+    let content = await file.arrayBuffer();
+    mountReaderTape(new Uint8Array(content));
+    
+    // Buttons aktualisieren
+    document.getElementById('mount-btn').disabled = true;
+    document.getElementById('unmount-btn').disabled = false;
+    document.getElementById('tape-status').textContent = `Mounted: ${file.name}`;
+}
+
+function unmountReader() {
+    papertape.setReader(null);
+    ws.send(JSON.stringify({
+        type: 'unmount_reader'
+    }));
+    messages.innerHTML = 'Paper Tape unmounted';
+    
+    // Buttons zurücksetzen
+    document.getElementById('tape-file').value = '';
+    document.getElementById('mount-btn').disabled = true;
+    document.getElementById('unmount-btn').disabled = true;
+    document.getElementById('tape-status').textContent = '';
+    selectedTapeFile = null;
+}
+
+function savePunch() {
+    const blob = new Blob([new Uint8Array(papertape.ptpbuf)], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'papertape.bin';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    messages.innerHTML = 'Paper Tape gespeichert: ' + papertape.ptpbuf.length + ' bytes';
+}
+
+function clearPunch() {
+    papertape.clearPunch();
+    messages.innerHTML = 'Paper Tape Punch gelöscht';
+}
+
+function clearTypewriter() {
+    typewriter.clear();
+    messages.innerHTML = 'Typewriter gelöscht';
+}
+
+function connectDisplay() {
+    if(dpy_connected) {
+        ws.send(JSON.stringify({ type: 'disconnect_dpy' }));
+        dpy_connected = false;
+        connectBtn.textContent = "Connect";
+    } else {
+        ws.send(JSON.stringify({ type: 'connect_dpy' }));
+    }
+}
+
+// Display size controls
+document.getElementById('size512Btn').addEventListener('click', () => {
+    const canvas = document.getElementById('display');
+    canvas.width = 512;
+    canvas.height = 512;
+    canvas.style.width = '512px';
+    canvas.style.height = '512px';
+});
+
+document.getElementById('size1024Btn').addEventListener('click', () => {
+    const canvas = document.getElementById('display');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    canvas.style.width = '1024px';
+    canvas.style.height = '1024px';
+});
+
+connectBtn.addEventListener('click', connectDisplay);
+
+// Draw loop for paper tape and display
+function drawLoop() {
+    papertape.draw();
+    
+	if (display) {
+		display.process();  
+		display.draw();    
+		}
+    
+    requestAnimationFrame(drawLoop);
+}
+
+// UTF-8 and escape sequence processing for typewriter
+let escstr = "";
+let utf8str = [];
+let utf8len = 0;
+let decoder = new TextDecoder();
+
+function leading1s(byte) {
+    let bit = 0200;
+    let n = 0;
+    while(bit & byte) {
+        n++;
+        bit >>= 1;
+    }
+    return n;
+}
+
+function processbyte(code) {
+    // Escape processing for colors
+    if(code == 033) {
+        escstr = "\033";
+        return;
+    }
+    if(escstr != "") {
+        escstr += String.fromCharCode(code);
+        if(escstr == "\033[31m") {
+            typewriter.red();
+            escstr = "";
+        } else if(escstr == "\033[39;49m") {
+            typewriter.black();
+            escstr = "";
+        }
+        return;
+    }
+
+    // Skip line feed (we use carriage return)
+    if(code == 015) return;
+
+    let nz = leading1s(code);
+    if(nz == 0) {
+        typewriter.printchar(String.fromCharCode(code));
+    } else if(nz > 1) {
+        utf8str = [code];
+        utf8len = nz-1;
+    } else if(nz == 1) {
+        utf8str.push(code);
+        utf8len--;
+        if(utf8len == 0)
+            typewriter.printchar(decoder.decode(new Uint8Array(utf8str)));
+    }
+}
+
+// Initialize
+papertape = new Papertape(
+    document.getElementById('readerCanvas'),
+    document.getElementById('punchCanvas')
+);
+
+typewriter = new Typewriter(
+    document.getElementById('typewriter'),
+    document.getElementById('typewriter-output')
+);
+
+display = new p7sim(document.getElementById('display'));
+
+// File Input Event Listener für Browse Button
+document.getElementById('tape-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+        document.getElementById('mount-btn').disabled = true;
+        document.getElementById('tape-status').textContent = '';
+        return;
+    }
+    
+    // Zeige Dateiname und aktiviere Mount-Button
+    document.getElementById('mount-btn').disabled = false;
+    document.getElementById('tape-status').textContent = `Selected: ${file.name}`;
+    messages.innerHTML = `File selected: ${file.name} (${file.size} bytes)`;
+});
+
+requestAnimationFrame(drawLoop);
+connectWS();
+    </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+PUNCH
+
+/ dump memory 7751-7777 to paper tape
+400/
+
+main,	law 7751		/ start address
+		dac ptr			/ initialize pointer
+
+loop,	lio i ptr		/ load word from memory to IO register
+	
+		/ output first character (bits 0-5)
+		ppb			/ punch bits 0-5 (iot 6)
+		rir 6s			/ rotate IO right 6 bits
+	
+		/ output second character (bits 6-11)
+		ppb			/ punch bits 6-11
+		rir 6s			/ rotate IO right 6 bits
+	
+		/ output third character (bits 12-17)
+		ppb			/ punch bits 12-17
+	
+		/ check if done (ptr reached 7777)
+		lac ptr			/ load current pointer
+		sad endadr		/ skip if different from end address
+		jmp done		/ reached 7777, stop
+	
+		/ increment pointer and continue
+		idx ptr			/ increment pointer
+		jmp loop		/ next word
+
+done,	hlt			/ stop program
+
+/ data storage
+ptr,	0			/ memory pointer
+endadr,	7777			/ end address (last word to dump)
+
+start main
