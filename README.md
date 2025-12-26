@@ -511,4 +511,4 @@ MIT License
 
 - [F17_PDP1Maint_1962.pdf](https://bitsavers.org/pdf/dec/pdp1/F17_PDP1Maint_1962.pdf)
 
-- [F25_PDP1_IO.pdf](https://bitsavers.org/pdf/dec/pdp1/F25_PDP1_IO.pdf)
+- [F25_PDP1_IO.pdf](https://bitsavers.org/pdf/dec/pdp1/F25_PDP1_IO.pdf) 
