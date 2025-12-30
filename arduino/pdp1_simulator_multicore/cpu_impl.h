@@ -205,27 +205,34 @@ void PDP1::handleSwitches() {
 }
 
 void PDP1::executeInstruction() {
+    // Instruction aus aktuellem PC lesen
     uint32_t instruction = readMemory(PC);
     
     uint8_t opField = (instruction >> 12) & 077;
     bool indirect = (opField & 1);
     uint8_t opcode = opField & 076;
-    uint16_t Y = instruction & 07777;
+    uint16_t Y = instruction & ADDR_MASK;  // 12-bit Offset aus Befehl
     
-    PC = (PC + 1) & ADDR_MASK;
+    // PC inkrement - nur Offset erhöhen, Bank bleibt gleich
+    uint8_t bank = (PC >> 12) & 0x03;
+    uint16_t offset = (PC + 1) & ADDR_MASK;
+    PC = makeAddress(bank, offset);
+    
     cycles++;
     
     if (opcode <= 056 && (opcode & 1) == 0) {
         executeMemoryReference(instruction, opcode, indirect, Y);
     }
-    else if (opcode == 060) {
-        if (indirect) Y = readMemory(Y) & ADDR_MASK;
-        PC = Y;
+    else if (opcode == 060) {  // JMP
+        PC = getEffectiveAddress(Y, indirect);
     }
-    else if (opcode == 062) {
-        if (indirect) Y = readMemory(Y) & ADDR_MASK;
-        AC = (PC & ADDR_MASK) | (OV ? 0400000 : 0);
-        PC = Y;
+    else if (opcode == 062) {  // JSP - Jump and Save PC
+        uint16_t target = getEffectiveAddress(Y, indirect);
+        // AC bekommt: Bit 0 = OV, Bit 1 = Extend-Flag, Bits 2-17 = PC
+        AC = (OV ? 0400000 : 0) | 
+             (isExtendActive() ? 0200000 : 0) | 
+             ((PC & 0x3FFF) << 2);
+        PC = target;
     }
     else if (opcode == 064) {
         executeSkip(instruction);
@@ -233,7 +240,7 @@ void PDP1::executeInstruction() {
     else if (opcode == 066 || opcode == 067) {
         executeShift(instruction);
     }
-    else if (opcode == 070) {
+    else if (opcode == 070) {  // LAW - Load Accumulator with Word
         AC = indirect ? (Y ^ WORD_MASK) : Y;
     }
     else if (opcode == 072) {
@@ -247,131 +254,146 @@ void PDP1::executeInstruction() {
 }
 
 void PDP1::executeMemoryReference(uint32_t instruction, uint8_t opcode, bool indirect, uint16_t Y) {
-    if (indirect) {
-        Y = readMemory(Y) & ADDR_MASK;
-    }
+    // Effektive Adresse berechnen
+    uint16_t addr = getEffectiveAddress(Y, indirect);
     
     uint32_t memValue;
     int32_t result;
     
     switch(opcode) {
         case 002:  // AND
-            AC &= readMemory(Y);
+            AC &= readMemory(addr);
             AC &= WORD_MASK;
             break;
             
         case 004:  // IOR
-            AC |= readMemory(Y);
+            AC |= readMemory(addr);
             AC &= WORD_MASK;
             break;
             
         case 006:  // XOR
-            AC ^= readMemory(Y);
+            AC ^= readMemory(addr);
             AC &= WORD_MASK;
             break;
             
-        case 010:  // XCT
+        case 010:  // XCT - Execute instruction at address
             {
                 uint16_t savedPC = PC;
-                uint32_t targetInstr = readMemory(Y);
-                PC = Y;
+                PC = addr;
                 executeInstruction();
                 PC = savedPC;
             }
             break;
             
-        case 016:  // CAL
-            writeMemory(0100, AC);
-            AC = (PC & ADDR_MASK) | (OV ? 0400000 : 0);
-            PC = 0101;
+        case 016:  // CAL - Calling sequence
+            {
+                // CAL nutzt 0100 und 0101 in der aktuellen Bank
+                uint8_t bank = getCurrentPCBank();
+                uint16_t addr100 = makeAddress(bank, 0100);
+                uint16_t addr101 = makeAddress(bank, 0101);
+                
+                writeMemory(addr100, AC);
+                AC = (OV ? 0400000 : 0) | 
+                     (isExtendActive() ? 0200000 : 0) | 
+                     ((PC & 0x3FFF) << 2);
+                PC = addr101;
+            }
             break;
             
-        case 017:  // JDA
-            writeMemory(Y, AC);
-            AC = (PC & ADDR_MASK) | (OV ? 0400000 : 0);
-            PC = (Y + 1) & ADDR_MASK;
+        case 017:  // JDA - Jump and Deposit AC
+            writeMemory(addr, AC);
+            AC = (OV ? 0400000 : 0) | 
+                 (isExtendActive() ? 0200000 : 0) | 
+                 ((PC & 0x3FFF) << 2);
+            {
+                uint8_t bank = (addr >> 12) & 0x03;
+                uint16_t offset = (addr + 1) & ADDR_MASK;
+                PC = makeAddress(bank, offset);
+            }
             break;
             
-        case 020:  // LAC
-            AC = readMemory(Y);
+        case 020:  // LAC - Load AC
+            AC = readMemory(addr);
             break;
             
         case 022:  // LIO
-            IO = readMemory(Y);
+            IO = readMemory(addr);
             break;
             
         case 024:  // DAC
-            writeMemory(Y, AC);
+            writeMemory(addr, AC);
             break;
             
         case 026:  // DAP
-            memValue = readMemory(Y);
+            memValue = readMemory(addr);
             memValue = (memValue & ~ADDR_MASK) | (AC & ADDR_MASK);
-            writeMemory(Y, memValue);
+            writeMemory(addr, memValue);
             break;
             
         case 030:  // DIP
-            memValue = readMemory(Y);
+            memValue = readMemory(addr);
             memValue = (memValue & ADDR_MASK) | (AC & ~ADDR_MASK);
-            writeMemory(Y, memValue);
+            writeMemory(addr, memValue);
             break;
             
         case 032:  // DIO
-            writeMemory(Y, IO);
+            writeMemory(addr, IO);
             break;
             
         case 034:  // DZM
-            writeMemory(Y, 0);
+            writeMemory(addr, 0);
             break;
             
         case 040:  // ADD
-            result = onesCompToSigned(AC) + onesCompToSigned(readMemory(Y));
+            result = onesCompToSigned(AC) + onesCompToSigned(readMemory(addr));
             if (result > 0777777 || result < -0777777) OV = true;
             AC = signedToOnesComp(result);
             break;
             
         case 042:  // SUB
-            result = onesCompToSigned(AC) - onesCompToSigned(readMemory(Y));
+            result = onesCompToSigned(AC) - onesCompToSigned(readMemory(addr));
             if (result > 0777777 || result < -0777777) OV = true;
             AC = signedToOnesComp(result);
             break;
             
         case 044:  // IDX
-            memValue = readMemory(Y);
+            memValue = readMemory(addr);
             memValue = (memValue + 1) & WORD_MASK;
-            //if (memValue == 0) memValue = WORD_MASK;
-            writeMemory(Y, memValue);
+            writeMemory(addr, memValue);
             AC = memValue;
             break;
             
-        case 046:  // ISP
-            memValue = readMemory(Y);
+        case 046:  // ISP - Index and Skip if Positive
+            memValue = readMemory(addr);
             memValue = (memValue + 1) & WORD_MASK;
-            //if (memValue == 0) memValue = WORD_MASK;
-            writeMemory(Y, memValue);
+            writeMemory(addr, memValue);
             AC = memValue;
             if (!(memValue & SIGN_BIT)) {
-                PC = (PC + 1) & ADDR_MASK;
+                uint8_t bank = (PC >> 12) & 0x03;
+                uint16_t offset = (PC + 1) & ADDR_MASK;
+                PC = makeAddress(bank, offset);
             }
             break;
             
-        case 050:  // SAD
-            if (AC != readMemory(Y)) {
-                PC = (PC + 1) & ADDR_MASK;
-                // Serial.print("SAD PC: ");
-                // Serial.println(PC ,OCT);
+        case 050:  // SAD - Skip if AC Different
+            if (AC != readMemory(addr)) {
+                uint8_t bank = (PC >> 12) & 0x03;
+                uint16_t offset = (PC + 1) & ADDR_MASK;
+                PC = makeAddress(bank, offset);
             }
             break;
             
-        case 052:  // SAS
-            if (AC == readMemory(Y)) {
-                PC = (PC + 1) & ADDR_MASK;
+        case 052:  // SAS - Skip if AC Same
+            if (AC == readMemory(addr)) {
+                uint8_t bank = (PC >> 12) & 0x03;
+                uint16_t offset = (PC + 1) & ADDR_MASK;
+                PC = makeAddress(bank, offset);
             }
             break;
             
         case 054:  // MUS
             {
-                int32_t multiplier = onesCompToSigned(readMemory(Y));
+                int32_t multiplier = onesCompToSigned(readMemory(addr));
                 int32_t multiplicand = onesCompToSigned(AC);
                 int64_t product = (int64_t)multiplier * (int64_t)multiplicand;
                 
@@ -388,7 +410,7 @@ void PDP1::executeMemoryReference(uint32_t instruction, uint8_t opcode, bool ind
             
         case 056:  // DIS
             {
-                int32_t divisor = onesCompToSigned(readMemory(Y));
+                int32_t divisor = onesCompToSigned(readMemory(addr));
                 if (divisor == 0) {
                     OV = true;
                     break;
@@ -513,9 +535,13 @@ void PDP1::executeSkip(uint32_t instruction) {
     }
     
     if (invert) shouldSkip = !shouldSkip;
-    if (shouldSkip) PC = (PC + 1) & ADDR_MASK;
+    if (shouldSkip) {
+        uint8_t bank = (PC >> 12) & 0x03;
+        uint16_t offset = (PC + 1) & ADDR_MASK;
+        PC = makeAddress(bank, offset);
+    }
 }
-
+/*
 void PDP1::executeShift(uint32_t instruction) {
     int count = 0;
     for (int i = 0; i < 9; i++) {
@@ -567,8 +593,118 @@ void PDP1::executeShift(uint32_t instruction) {
         }
     }
 }
+*/
+#define DMASK    0777777   // 18-bit Wort-Maske
+#define SIGN     0400000   // Vorzeichen-Bit (Bit 17 in C, Bit 0 im Handbuch)
+//new with shift-patch
+void PDP1::executeShift(uint32_t instruction) {
+    // Shift Count: Anzahl der 1-Bits in Bits 8-0
+    // SIMH verwendet eine Lookup-Tabelle, wir können __builtin_popcount nutzen
+    int sc = __builtin_popcount(instruction & 0777);
+    
+    // Sub-Opcode: 4 Bits aus Position 9-12
+    uint8_t subOp = (instruction >> 9) & 017;
+    
+    // Temporäre Variable für Berechnungen
+    uint32_t t;
+    
+    switch (subOp) {
+        
+        // ============ LINKS ROTATE ============
+        case 001:  // RAL - Rotate AC Left
+            
+            //org
+            AC = ((AC << sc) | (AC >> (18 - sc))) & DMASK;
+            break;
+            
+        case 002:  // RIL - Rotate IO Left
+            IO = ((IO << sc) | (IO >> (18 - sc))) & DMASK;
+            break;
+            
+        case 003:  // RCL - Rotate Combined (AC+IO) Left
+            t = AC;
+            AC = ((AC << sc) | (IO >> (18 - sc))) & DMASK;
+            IO = ((IO << sc) | (t >> (18 - sc))) & DMASK;
+            break;
+            
+        // ============ LINKS SHIFT (Arithmetic) ============
+        case 005:  // SAL - Shift AC Left (arithmetic)
+            // Vorzeichen bleibt erhalten, Rest shiftet
+            t = (AC & SIGN) ? DMASK : 0;
+            AC = (AC & SIGN) | ((AC << sc) & 0377777) | (t >> (18 - sc));
+            break;
+            
+        case 006:  // SIL - Shift IO Left (arithmetic)
+            t = (IO & SIGN) ? DMASK : 0;
+            IO = (IO & SIGN) | ((IO << sc) & 0377777) | (t >> (18 - sc));
+            break;
+            
+        case 007:  // SCL - Shift Combined Left (arithmetic)
+            t = (AC & SIGN) ? DMASK : 0;
+            AC = (AC & SIGN) | ((AC << sc) & 0377777) | (IO >> (18 - sc));
+            IO = ((IO << sc) | (t >> (18 - sc))) & DMASK;
+            break;
+            
+        // ============ RECHTS ROTATE ============
+        case 011:  // RAR - Rotate AC Right
+            AC = ((AC >> sc) | (AC << (18 - sc))) & DMASK;
+            break;
+            
+        case 012:  // RIR - Rotate IO Right
+            IO = ((IO >> sc) | (IO << (18 - sc))) & DMASK;
+            break;
+            
+        case 013:  // RCR - Rotate Combined Right
+            t = IO;
+            IO = ((IO >> sc) | (AC << (18 - sc))) & DMASK;
+            AC = ((AC >> sc) | (t << (18 - sc))) & DMASK;
+            break;
+            
+        // ============ RECHTS SHIFT (Arithmetic) ============
+        case 015:  // SAR - Shift AC Right (arithmetic)
+            // Vorzeichen wird nach rechts repliziert
+            
+            t = (AC & SIGN) ? DMASK : 0;
+            AC = ((AC >> sc) | (t << (18 - sc))) & DMASK;
+           
+            break;
+            
+        case 016:  // SIR - Shift IO Right (arithmetic)
+            t = (IO & SIGN) ? DMASK : 0;
+            IO = ((IO >> sc) | (t << (18 - sc))) & DMASK;
+            break;
+            
+        case 017:  // SCR - Shift Combined Right (arithmetic)
+            t = (AC & SIGN) ? DMASK : 0;
+            IO = ((IO >> sc) | (AC << (18 - sc))) & DMASK;
+            AC = ((AC >> sc) | (t << (18 - sc))) & DMASK;
+            break;
+            
+        default:
+            // Undefinierter Sub-Opcode
+            Serial.printf("SHIFT: undefined subop %02o\n", subOp);
+            break;
+    }
+}
+
 
 void PDP1::executeIOT(uint32_t instruction) {
+    // Prüfe zuerst auf Memory Extension Opcodes (vollständiger Befehl)
+    uint32_t fullInstr = instruction & WORD_MASK;
+    
+    if (fullInstr == OP_EEM) {  // 724074 - Enter Extend Mode
+        extendMode = true;
+        Serial.println("[MEM] EEM - Enter Extend Mode");
+        return;
+    }
+    
+    if (fullInstr == OP_LEM) {  // 720074 - Leave Extend Mode
+        extendMode = false;
+        Serial.println("[MEM] LEM - Leave Extend Mode");
+        return;
+    }
+    
+    // Normale IOT-Verarbeitung
     uint8_t device = instruction & 077;
 
     switch(device) {
@@ -636,11 +772,13 @@ void PDP1::executeIOT(uint32_t instruction) {
                 uint8_t intensity = 7;  // Maximum Helligkeit
 
                 // X aus AC
-                int16_t pdp_x = (AC & 0x3FF);
+                //int16_t pdp_x = (AC & 0x3FF);
+                int16_t pdp_x = (AC >> 8) & 0x3FF;
                 if (pdp_x >= 512) pdp_x -= 1024;
 
                 // Y aus IO
-                int16_t pdp_y = (IO & 0x3FF);
+                //int16_t pdp_y = (IO & 0x3FF);
+                int16_t pdp_y = (IO >> 8) & 0x3FF;
                 if (pdp_y >= 512) pdp_y -= 1024;
 
                 handleDisplayOutput(pdp_x, pdp_y, intensity);            

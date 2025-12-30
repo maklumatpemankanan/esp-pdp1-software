@@ -345,7 +345,8 @@ public:
     
     void updateDisplay(uint32_t ac, uint32_t io, uint16_t pc, uint16_t ma, 
                       uint32_t mb, uint32_t instr, bool ov, uint8_t pf,
-                      uint8_t senseSw, bool power, bool run, bool step) override {
+                      uint8_t senseSw, bool power, bool run, bool step,
+                      bool extend = false) override {
         
         for (int i = 0; i < ledMappingSize; i++) {
             const LEDMap& led = ledMapping[i];
@@ -386,6 +387,9 @@ public:
             }
             else if (strcmp(led.reg, "Step") == 0) {
                 state = step;
+            }
+            else if (strcmp(led.reg, "Extend") == 0) {
+                state = extend;
             }
             
             setLED(led.chip, led.port, led.pin, state);
@@ -475,8 +479,17 @@ const LEDControllerV1::LEDMap LEDControllerV1::ledMapping[] = {
     {"PF", 3, 6, 'B', 3}, {"PF", 4, 6, 'B', 4}, {"PF", 5, 6, 'B', 5},
 
 
-    {"Power", 0, 7, 'A', 0}, {"Step", 1, 7, 'A', 1}, {"Run", 3, 7, 'A', 3},
-    {"Overflow", 9, 7, 'B', 1}
+    // {"Power", 0, 7, 'A', 0}, {"Step", 1, 7, 'A', 1}, {"Run", 3, 7, 'A', 3},
+    // {"Overflow", 9, 7, 'B', 1}
+    {"Power", 0, 7, 'A', 0}, {"Step", 1, 7, 'A', 1}, {"Sintr", 2, 7, 'A', 2}, 
+    {"Run", 3, 7, 'A', 3}, {"Cycle", 4, 7, 'A', 4}, {"Defer", 5, 7, 'A', 5},
+    {"HS", 6, 7, 'A', 6}, {"Brk1", 7, 7, 'A', 7},
+    
+    {"Brk2"	, 8,  7, 'B', 0}, {"Overflow", 9,  7, 'B', 1}, {"Readin", 10, 7, 'B', 2},
+    {"Seqbreak", 11, 7, 'B', 3}, {"Extend", 12, 7, 'B', 4}, {"ioh", 13, 7, 'B', 5},
+    {"ioc", 14, 7, 'B', 6}, {"ios", 15, 7, 'B', 7}
+
+
 };
 
 const int LEDControllerV1::ledMappingSize = sizeof(LEDControllerV1::ledMapping) / sizeof(LEDControllerV1::LEDMap);

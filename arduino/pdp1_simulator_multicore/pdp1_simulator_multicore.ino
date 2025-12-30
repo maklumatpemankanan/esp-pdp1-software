@@ -63,7 +63,7 @@ volatile bool DRAM_ATTR g_rimLoadingActive = false;  // NEU
 #include "cpu.h"
 
 #ifdef WEBSERVER_SUPPORT
-    #include "webserver.h";
+    #include "webserver.h"
 #endif
 
 // Hardware-Version einbinden
@@ -286,12 +286,13 @@ void printHelp() {
     Serial.println("m             - start LED Test");
     Serial.println("r             - start CPU");
     Serial.println("s             - Stepmode");
-    Serial.println("d [adresse]   - Memory Dump");
+    Serial.println("d [adresse]   - Memory Dump (oktal, z.B. 'd 10000' für Bank 1)");
     Serial.println("p             - CPU State");
     Serial.println("w             - Switch State");
     Serial.println("t             - LED Test");
     Serial.println("o             - LEDs off");
     Serial.println("x             - Reset CPU");
+    Serial.println("e             - Toggle Extend Mode (Memory Extension)");
     Serial.println("i             - Performance Info");
     Serial.println("h             - Help");
     #ifdef BACKPLANE_SUPPORT
@@ -361,6 +362,11 @@ void loop() {
         if (g_switchInterruptFlag) {
             g_switchInterruptFlag = false;
             // Prüfe Stop-Taste
+            // if (switches.isPressed(0x25,7)){
+            //     Serial.println("[DEBUG] Readin");
+            // }    
+
+
             if (switches.isPressed(0x25, 3)) {
                 //Serial.println("[CORE 0] STOP interrupt triggered");
                 g_cpuShouldStop = true;  // Signal an Core 1
@@ -475,6 +481,17 @@ void loop() {
                     cpu.reset();
                     Serial.println("CPU Reset");
                     break;
+                
+                case 'e':
+                case 'E':
+                    {
+                        bool newMode = !cpu.getExtendMode();
+                        cpu.setExtendMode(newMode);
+                        Serial.printf("Extend Mode: %s\n", newMode ? "ON" : "OFF");
+                        Serial.printf("(Hardware Switch: %s)\n", 
+                            switches.getExtendSwitch() ? "ON" : "OFF");
+                    }
+                    break;
                     
                 case 'i':
                 case 'I':
@@ -484,6 +501,8 @@ void loop() {
                     Serial.printf("CPU Running: %s\n", g_cpuIsRunning ? "YES" : "NO");
                     Serial.printf("Instructions: %lu\n", g_instructionsExecuted);
                     Serial.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
+                    Serial.printf("Memory: %d Banks x %d Words = %d KB\n", 
+                        MEMORY_BANKS, BANK_SIZE, (EXTENDED_MEM_SIZE * 4) / 1024);
                     Serial.println("========================\n");
                     break;
                     

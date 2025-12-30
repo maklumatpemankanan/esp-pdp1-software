@@ -19,8 +19,8 @@ extern PDP1 cpu;
 extern SemaphoreHandle_t cpuMutex;  // MULTICORE: Mutex für CPU-Zugriffe
 
 // WiFi Credentials
-const char* ssid = "Your SSID here";
-const char* password = "Your Passphrase here";
+const char* ssid = "YourDataHere";
+const char* password = "YourDataHere";
 
 // Webserver & WebSocket
 AsyncWebServer server(80);
@@ -377,12 +377,25 @@ void sendDisplayPointsBatch() {
 
 void testDisplay(){
     for(int i = 0; i < 16; i++){
+        handleDisplayOutput(0,0, 7);
+        
+        handleDisplayOutput(-100,0, 7);
+        handleDisplayOutput(-100,100, 7);
+        handleDisplayOutput(0,100, 7);
+        handleDisplayOutput(100,100, 7);
+        handleDisplayOutput(100,0, 7);
+        handleDisplayOutput(100,-100, 7);
+        handleDisplayOutput(0,-100, 7);
+        handleDisplayOutput(-100,-100, 7);
+        
+        /*
         handleDisplayOutput(-150, 250, 7);
         handleDisplayOutput(-100, 200, 7);
         handleDisplayOutput(200, -300, 7);
         handleDisplayOutput(150, -250, 7);
         handleDisplayOutput(100, -200, 7);
-        delay(50);
+        */
+        //delay(250);
     }
 }
 

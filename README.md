@@ -485,7 +485,9 @@ open with your Browser with **http://Your-Ip-Address** and use the Webinterface.
 
 ### Memory
 
-4096 18-Bit Words from 0000 - 7777
+4x Type20 Memory-Module (4096 18-Bit Words from 0000 - 7777) 16K-Words-Memory
+
+1x Type15 Memory-Extension included
 
 ### RIM Format
 

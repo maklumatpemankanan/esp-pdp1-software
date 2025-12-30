@@ -228,7 +228,8 @@ public:
     
     void updateDisplay(uint32_t ac, uint32_t io, uint16_t pc, uint16_t ma, 
                       uint32_t mb, uint32_t instr, bool ov, uint8_t pf,
-                      uint8_t senseSw, bool power, bool run, bool step) override {
+                      uint8_t senseSw, bool power, bool run, bool step,
+                      bool extend = false) override {
         
         if (!power) {
             showingRandomPattern = false;
@@ -292,6 +293,7 @@ public:
         setLED("PWR", power);
         setLED("SSTEP", step);
         setLED("OV1", ov);
+        setLED("EXD", extend);  // Extend LED
         
         updateLEDMatrix();
     }

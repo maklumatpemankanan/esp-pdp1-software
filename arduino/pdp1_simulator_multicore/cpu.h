@@ -7,8 +7,45 @@
 // PDP-1 Architecture Constants
 #define WORD_MASK 0777777
 #define SIGN_BIT  0400000
-#define ADDR_MASK 07777
-#define MEMORY_SIZE 4096
+
+// ============================================================================
+// Memory Extension Control Type 15
+// ============================================================================
+// PC/MA Layout im Extended Mode (16 bit):
+//   Bit 0:     (reserviert für OV bei JSP/JDA/CAL)
+//   Bit 1:     (reserviert für Extend-Flag bei JSP/JDA/CAL)
+//   Bits 2-5:  Bank-Nummer (0-15, wir nutzen 0-3)
+//   Bits 6-17: Offset innerhalb Bank (0-7777 oktal = 0-4095)
+//
+// Wichtig:
+//   - Direkte Adressen (Y im Befehl) sind IMMER relativ zur aktuellen Bank
+//   - Nur indirekte Adressen im EXTEND-Mode nutzen volle 16-bit Adressen
+//   - PC zählt nur in Bits 6-17, bei Überlauf 7777→0000 bleibt Bank gleich
+//   - Im NORMAL-Mode: Multi-Level Indirection innerhalb der Bank
+//   - Im EXTEND-Mode: Single-Level Indirection mit 16-bit Adresse
+//
+// Opcodes:
+//   EEM (724074) - Enter Extend Mode: Single-level indirect, 16-bit Adressen
+//   LEM (720074) - Leave Extend Mode: Multi-level indirect, Bank-relativ
+// ============================================================================
+
+#define MEMORY_BANKS      4         // 4 Banks (erweiterbar auf 16)
+#define BANK_SIZE         4096      // 4K Wörter pro Bank  
+#define EXTENDED_MEM_SIZE 16384     // 4 x 4096 = 16K Wörter total
+
+#define ADDR_MASK         07777     // 12-bit Offset innerhalb Bank
+#define ADDR_MASK_FULL    0177777   // Volle 16-bit Adresse (für indirekt im Extend)
+#define BANK_MASK         074       // Bits 2-5 im PC = Bank (oktal 74 = binär 111100)
+#define BANK_SHIFT        10        // Bank-Bits Position (Bits 2-5 → shift um 10 für Memory-Index)
+#define PC_BANK_MASK      037777    // Bits 2-17: Bank + Offset für Memory-Zugriff
+#define PC_OFFSET_MASK    07777     // Bits 6-17: Nur Offset (zählt bei PC++)
+
+// Memory Extension Opcodes (IOT Klasse)
+#define OP_EEM  0724074             // Enter Extend Mode
+#define OP_LEM  0720074             // Leave Extend Mode
+
+// Legacy defines für Kompatibilität
+#define MEMORY_SIZE EXTENDED_MEM_SIZE
 
 #define OP_MASK   0760000
 #define I_BIT     0010000
@@ -22,7 +59,8 @@ public:
     virtual void begin() = 0;
     virtual void updateDisplay(uint32_t ac, uint32_t io, uint16_t pc, uint16_t ma, 
                               uint32_t mb, uint32_t instr, bool ov, uint8_t pf,
-                              uint8_t senseSw, bool power, bool run, bool step) = 0;
+                              uint8_t senseSw, bool power, bool run, bool step,
+                              bool extend = false) = 0;
     virtual void allOff() = 0;
     virtual void testPattern() = 0;
     virtual void showRandomPattern() { }  // Optional - nur Version 2 nutzt das
@@ -243,13 +281,18 @@ class PDP1 {
 private:
     uint32_t AC;
     uint32_t IO;
-    uint16_t PC;
+    uint16_t PC;   
     uint16_t MA;
     uint32_t MB;
     bool OV;
     bool PF[7];
     
-    uint32_t memory[MEMORY_SIZE];
+    // Memory: 4 Banks à 4096 Wörter = 16K total
+    uint32_t memory[EXTENDED_MEM_SIZE];
+    
+    // Memory Extension Control Type 15
+    bool extendMode;          // Extend-Flipflop (Software via EEM/LEM)
+    uint8_t currentBank;      // Aktuelle Bank (0-3) für Anzeige
     
     bool running;
     bool halted;
@@ -356,6 +399,8 @@ public:
         showRandomLEDs = false;
         stepModeStop = false;
         externalStopFlag = nullptr;  // NEU für Multicore!
+        extendMode = false;          // Memory Extension aus
+        currentBank = 0;
         reset();
     }
 
@@ -403,31 +448,87 @@ public:
         MB = 0;
         OV = false;
         memset(PF, 0, sizeof(PF));
-        memset(memory, 0, sizeof(memory));
+        memset(memory, 0, sizeof(memory));  // Jetzt 16K!
         running = false;
         halted = false;
         cycles = 0;
         typewriter_buffer = "";
         examineAddress = 0;
         showRandomLEDs = false;
+        
+        // Memory Extension zurücksetzen
+        extendMode = false;
+        currentBank = 0;
+        
         updateLEDs();
     }
     
+    // Prüft ob Extended Mode aktiv ist (Flipflop ODER Hardware-Switch)
+    bool isExtendActive() {
+        return extendMode || (switches && switches->getExtendSwitch());
+    }
+    
+    // Holt die aktuelle Bank aus dem PC (obere 2 Bits)
+    uint8_t getCurrentPCBank() {
+        return (PC >> 12) & 0x03;
+    }
+    
+    // Kombiniert Bank mit 12-bit Offset zu 14-bit Adresse
+    uint16_t makeAddress(uint8_t bank, uint16_t offset) {
+        return ((bank & 0x03) << 12) | (offset & ADDR_MASK);
+    }
+    
+    // Liest aus Speicher
     uint32_t readMemory(uint16_t addr) {
-        addr &= ADDR_MASK;
+        addr &= (EXTENDED_MEM_SIZE - 1);  // Auf gültigen Bereich begrenzen
         MA = addr;
         MB = memory[addr] & WORD_MASK;
+        currentBank = (addr >> 12) & 0x03;
         return MB;
     }
     
+    // Schreibt in Speicher
     void writeMemory(uint16_t addr, uint32_t value) {
-        addr &= ADDR_MASK;
+        addr &= (EXTENDED_MEM_SIZE - 1);
         value &= WORD_MASK;
-        //if (value == WORD_MASK) value = 0;
-        
         MA = addr;
         MB = value;
         memory[addr] = value;
+        currentBank = (addr >> 12) & 0x03;
+    }
+    
+    // Berechnet effektive Adresse für Memory-Reference Befehle
+    // Y = 12-bit Offset aus dem Befehl
+    // indirect = Indirect-Bit gesetzt
+    uint16_t getEffectiveAddress(uint16_t Y, bool indirect) {
+        uint8_t bank = getCurrentPCBank();
+        uint16_t addr = makeAddress(bank, Y);
+        
+        if (!indirect) {
+            // Direkt: Bank aus PC + Offset aus Befehl
+            return addr;
+        }
+        
+        // Indirekt: Wort an der Adresse lesen
+        uint32_t word = readMemory(addr);
+        
+        if (isExtendActive()) {
+            // EXTEND Mode: Single-level indirect
+            // Bits 0-15 des 18-bit Wortes = 16-bit Adresse
+            // Bits 12-15 = Bank (wir nutzen nur 0-3)
+            // Bits 0-11 = Offset
+            uint8_t newBank = (word >> 12) & 0x03;  // Unsere Bits 12-13
+            uint16_t newOffset = word & ADDR_MASK;  // Unsere Bits 0-11
+            return makeAddress(newBank, newOffset);
+        } else {
+            // NORMAL Mode: Multi-level indirect innerhalb der Bank
+            while (word & 0010000) {  // Indirect-Bit (Bit 12) gesetzt?
+                uint16_t newOffset = word & ADDR_MASK;
+                addr = makeAddress(bank, newOffset);
+                word = readMemory(addr);
+            }
+            return makeAddress(bank, word & ADDR_MASK);
+        }
     }
     
     void updateLEDs() {
@@ -452,9 +553,10 @@ public:
             }
             
             bool stepMode = switches ? switches->getSingleStep() : false;
+            bool extendActive = isExtendActive();
             
             leds->updateDisplay(AC, IO, PC, MA, MB, currentInstr, OV, pfBits,
-                              senseSwitches, powerOn, running, stepMode);
+                              senseSwitches, powerOn, running, stepMode, extendActive);
         }
 
         if (!leds) {
@@ -468,13 +570,23 @@ public:
     void step();
     
     // CPU-Zugriffsmethoden für RIM-Loader
-    void setPC(uint16_t pc) { PC = pc & ADDR_MASK; }
+    void setPC(uint16_t pc) { 
+        PC = pc & (EXTENDED_MEM_SIZE - 1);  // 14-bit
+    }
     void setAC(uint32_t ac) { AC = ac & WORD_MASK; }
     void setIO(uint32_t io) { IO = io & WORD_MASK; }
     void setState(bool run) { running = run; halted = !run; }
     uint16_t getPC() const { return PC; }
     uint32_t getAC() const { return AC; }
     bool getState() const { return running && !halted; }
+    
+    // Memory Extension Control
+    void setExtendMode(bool mode) { 
+        extendMode = mode; 
+        Serial.printf("[MEM] Extend Mode: %s\n", mode ? "ON" : "OFF");
+    }
+    bool getExtendMode() const { return extendMode; }
+    uint8_t getCurrentBank() const { return (PC >> 12) & 0x03; }
     
     bool loadRIM(const char* filename) {
         reset();
@@ -499,16 +611,33 @@ public:
     }
     
     void printStatus() {
-        Serial.printf("PC=%04o AC=%06o IO=%06o OV=%d Cycles=%lu\n",
-                     PC, AC, IO, OV, cycles);
+        bool extActive = isExtendActive();
+        uint8_t bank = (PC >> 12) & 0x03;
+        uint16_t offset = PC & ADDR_MASK;
+        Serial.printf("PC=%05o (Bank %d, Offset %04o) AC=%06o IO=%06o OV=%d Cycles=%lu\n",
+                     PC, bank, offset, AC, IO, OV, cycles);
+        Serial.printf("Memory Extension: %s (Flipflop=%s, Switch=%s)\n",
+                     extActive ? "EXTEND" : "NORMAL",
+                     extendMode ? "ON" : "OFF",
+                     (switches && switches->getExtendSwitch()) ? "ON" : "OFF");
     }
     
     void dumpMemory(uint16_t start, uint16_t end) {
-        for (uint16_t addr = start; addr <= end; addr++) {
+        // Bank-Info anzeigen
+        uint8_t startBank = (start >> 12) & 0x03;
+        uint8_t endBank = (end >> 12) & 0x03;
+        
+        if (startBank != endBank) {
+            Serial.printf("[Memory Dump: Banks %d-%d]\n", startBank, endBank);
+        } else {
+            Serial.printf("[Memory Dump: Bank %d]\n", startBank);
+        }
+        
+        for (uint16_t addr = start; addr <= end && addr < EXTENDED_MEM_SIZE; addr++) {
             if ((addr & 07) == 0) {
-                Serial.printf("\n%04o: ", addr);
+                Serial.printf("\n%05o: ", addr);  // 5 Stellen für 14-bit
             }
-            Serial.printf("%06o ", readMemory(addr));
+            Serial.printf("%06o ", memory[addr] & WORD_MASK);
         }
         Serial.println();
     }
