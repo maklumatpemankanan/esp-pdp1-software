@@ -300,6 +300,8 @@ Shift count = number of 1-bits in address field.
 | 006    | PPB      | Punch paper tape binary                                             |
 | 007    | DPY      | Display point (AC[0-9]=X, IO[0-9]=Y)                                |
 | 012    | ---      | IoT Device for Example, sends AC and IO <br/>to the Backplane Ports |
+| 724074 | EEM      | Enter Extend Mode                                                   |
+| 720074 | LEM      | Leave Extend Mode                                                   |
 
 ---
 
